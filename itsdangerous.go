@@ -8,41 +8,79 @@ where the original version is written in Python.
 package itsdangerous
 
 import (
+	"bytes"
+	"compress/zlib"
 	"encoding/base64"
-	"fmt"
-	"strings"
+	"io/ioutil"
 	"time"
 )
 
-// 2011/01/01 in UTC
-const EPOCH = 1293840000
-
-// Encodes a single string. The resulting string is safe for putting into URLs.
-func base64Encode(src []byte) string {
-	s := base64.URLEncoding.EncodeToString(src)
-	return strings.Trim(s, "=")
+func base64Encode(b []byte) []byte {
+	dst := make([]byte, base64.URLEncoding.EncodedLen(len(b)))
+	base64.URLEncoding.Encode(dst, b)
+	for i := len(dst) - 1; i > 0; i-- {
+		if dst[i] == '=' {
+			dst = dst[:i]
+		}
+	}
+	return dst
 }
 
-// Decodes a single string.
-func base64Decode(s string) ([]byte, error) {
-	var padLen int
+func ZBase64Encode(b []byte) []byte {
 
-	if l := len(s) % 4; l > 0 {
-		padLen = 4 - l
-	} else {
-		padLen = 1
+	isCompressed := false
+	var zbuf bytes.Buffer
+	zw := zlib.NewWriter(&zbuf)
+	zw.Write(b)
+	if err := zw.Close(); err == nil {
+		cb := zbuf.Bytes()
+		if len(cb) < len(b)+1 {
+			isCompressed = true
+			b = cb
+		}
 	}
 
-	b, err := base64.URLEncoding.DecodeString(s + strings.Repeat("=", padLen))
+	dst := base64Encode(b)
+
+	if isCompressed {
+		dst = append([]byte{'.'}, dst...)
+	}
+	return dst
+}
+
+func base64Decode(b []byte) ([]byte, error) {
+	// if leading '.' itsdangerous has compressed this with zlib
+	decompress := false
+	if b[0] == '.' {
+		decompress = true
+		b = b[1:]
+	}
+
+	for i := 0; i < len(b)%4; i++ {
+		b = append(b, '=')
+	}
+
+	dst := make([]byte, base64.URLEncoding.DecodedLen(len(b)))
+	n, err := base64.URLEncoding.Decode(dst, b)
 	if err != nil {
-		fmt.Println(s)
-		return []byte(""), err
+		return nil, err
 	}
-	return b, nil
+	dst = dst[:n]
+
+	// if leading '.' decompress now
+	if decompress {
+		br := bytes.NewReader(dst)
+		r, err := zlib.NewReader(br)
+		if err != nil {
+			return nil, err
+		}
+		done, err := ioutil.ReadAll(r)
+		return done, err
+	}
+
+	return dst, nil
 }
 
-// Returns the current timestamp.  This implementation returns the
-// seconds since 1/1/2011.
 func getTimestamp() uint32 {
-	return uint32(time.Now().Unix() - EPOCH)
+	return uint32(time.Now().Unix())
 }

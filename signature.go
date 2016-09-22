@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"strings"
 )
 
 // Signature can sign bytes and unsign it and validate the signature
@@ -20,9 +19,9 @@ import (
 // signed value in one part can mean something different in another part
 // is a security risk.
 type Signature struct {
-	SecretKey     string
-	Sep           string
-	Salt          string
+	SecretKey     []byte
+	Sep           []byte
+	Salt          []byte
 	KeyDerivation string
 	DigestMethod  hash.Hash
 	Algorithm     SigningAlgorithm
@@ -31,8 +30,8 @@ type Signature struct {
 // DeriveKey generates a key derivation. Keep in mind that the key derivation in itsdangerous
 // is not intended to be used as a security method to make a complex key out of a short password.
 // Instead you should use large random secret keys.
-func (s *Signature) DeriveKey() (string, error) {
-	var key string
+func (s *Signature) DeriveKey() ([]byte, error) {
+	var key []byte
 	var err error
 
 	s.DigestMethod.Reset()
@@ -40,29 +39,32 @@ func (s *Signature) DeriveKey() (string, error) {
 	switch s.KeyDerivation {
 	case "concat":
 		h := s.DigestMethod
-		h.Write([]byte(s.Salt + s.SecretKey))
-		key = string(h.Sum(nil))
+		h.Write(s.Salt)
+		h.Write(s.SecretKey)
+		key = h.Sum(nil)
 	case "django-concat":
 		h := s.DigestMethod
-		h.Write([]byte(s.Salt + "signer" + s.SecretKey))
-		key = string(h.Sum(nil))
+		h.Write(s.Salt)
+		h.Write([]byte("signer"))
+		h.Write(s.SecretKey)
+		key = h.Sum(nil)
 	case "hmac":
-		h := hmac.New(func() hash.Hash { return s.DigestMethod }, []byte(s.SecretKey))
-		h.Write([]byte(s.Salt))
-		key = string(h.Sum(nil))
+		h := hmac.New(func() hash.Hash { return s.DigestMethod }, s.SecretKey)
+		h.Write(s.Salt)
+		key = h.Sum(nil)
 	case "none":
 		key = s.SecretKey
 	default:
-		key, err = "", errors.New("unknown key derivation method")
+		key, err = nil, errors.New("unknown key derivation method")
 	}
 	return key, err
 }
 
 // Get returns the signature for the given value.
-func (s *Signature) Get(value string) (string, error) {
+func (s *Signature) Get(value []byte) ([]byte, error) {
 	key, err := s.DeriveKey()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	sig := s.Algorithm.GetSignature(key, value)
@@ -70,7 +72,7 @@ func (s *Signature) Get(value string) (string, error) {
 }
 
 // Verify verifies the signature for the given value.
-func (s *Signature) Verify(value, sig string) (bool, error) {
+func (s *Signature) Verify(value, sig []byte) (bool, error) {
 	key, err := s.DeriveKey()
 	if err != nil {
 		return false, err
@@ -84,27 +86,43 @@ func (s *Signature) Verify(value, sig string) (bool, error) {
 }
 
 // Sign the given string.
-func (s *Signature) Sign(value string) (string, error) {
+func (s *Signature) Sign(value []byte) ([]byte, error) {
 	sig, err := s.Get(value)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return value + s.Sep + sig, nil
+	return sepJoin(value, s.Sep, sig), nil
 }
 
 // Unsign the given string.
-func (s *Signature) Unsign(signed string) (string, error) {
-	if !strings.Contains(signed, s.Sep) {
-		return "", fmt.Errorf("no %s found in value", s.Sep)
+func (s *Signature) Unsign(signed []byte) ([]byte, error) {
+	if !bytes.Contains(signed, s.Sep) {
+		return nil, fmt.Errorf("no %s found in value", s.Sep)
 	}
 
-	li := strings.LastIndex(signed, s.Sep)
+	li := bytes.LastIndex(signed, s.Sep)
 	value, sig := signed[:li], signed[li+len(s.Sep):]
 
 	if ok, _ := s.Verify(value, sig); ok == true {
 		return value, nil
 	}
-	return "", fmt.Errorf("signature %s does not match", sig)
+	return nil, fmt.Errorf("signature %s does not match", sig)
+}
+
+// SignB64 first Base64 encodes the (optionally compressed) value before signing.
+// This is compatable with itsdangerous URLSafeSerializer
+func (s *Signature) SignB64(value []byte) ([]byte, error) {
+	return s.Sign(ZBase64Encode(value))
+}
+
+// UnsignB64 Base64 decodes the (optionally compressed) value after unsigning
+// This is compatable with itsdangerous URLSafeSerializer
+func (s *Signature) UnsignB64(signed []byte) ([]byte, error) {
+	b, err := s.Unsign(signed)
+	if err != nil {
+		return nil, err
+	}
+	return base64Decode(b)
 }
 
 // NewSignature creates a new Signature
@@ -125,9 +143,9 @@ func NewSignature(secret, salt, sep, derivation string, digest hash.Hash, algo S
 		algo = &HMACAlgorithm{DigestMethod: digest}
 	}
 	return &Signature{
-		SecretKey:     secret,
-		Salt:          salt,
-		Sep:           sep,
+		SecretKey:     []byte(secret),
+		Salt:          []byte(salt),
+		Sep:           []byte(sep),
 		KeyDerivation: derivation,
 		DigestMethod:  digest,
 		Algorithm:     algo,
@@ -141,55 +159,73 @@ type TimestampSignature struct {
 }
 
 // Sign the given string.
-func (s *TimestampSignature) Sign(value string) (string, error) {
+func (s *TimestampSignature) Sign(value []byte) ([]byte, error) {
 	buf := new(bytes.Buffer)
 
 	if err := binary.Write(buf, binary.BigEndian, getTimestamp()); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	ts := base64Encode(buf.Bytes())
-	val := value + s.Sep + ts
+
+	val := sepJoin(value, s.Sep, ts)
 
 	sig, err := s.Get(val)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return val + s.Sep + sig, nil
+	return sepJoin(val, s.Sep, sig), nil
+}
+
+// SignB64 first Base64 encodes the (optionally compressed) value before signing.
+// This is compatable with itsdangerous URLSafeTimedSerializer
+func (s *TimestampSignature) SignB64(value []byte) ([]byte, error) {
+	return s.Sign(ZBase64Encode(value))
+}
+
+// UnsignB64 Base64 decodes the (optionally compressed) value after unsigning
+// This is compatable with itsdangerous URLSafeTimedSerializer
+func (s *TimestampSignature) UnsignB64(signed []byte, maxAge uint32) ([]byte, error) {
+	b, err := s.Unsign(signed, maxAge)
+	if err != nil {
+		return nil, err
+	}
+	return base64Decode(b)
 }
 
 // Unsign the given string.
-func (s *TimestampSignature) Unsign(value string, maxAge uint32) (string, error) {
+func (s *TimestampSignature) Unsign(value []byte, maxAge uint32) ([]byte, error) {
 	var timestamp uint32
 
 	result, err := s.Signature.Unsign(value)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// If there is no timestamp in the result there is something seriously wrong.
-	if !strings.Contains(result, s.Sep) {
-		return "", errors.New("timestamp missing")
+	if !bytes.Contains(result, s.Sep) {
+		return nil, errors.New("timestamp missing")
 	}
 
-	li := strings.LastIndex(result, s.Sep)
+	li := bytes.LastIndex(result, s.Sep)
 	val, ts := result[:li], result[li+len(s.Sep):]
 
 	sig, err := base64Decode(ts)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	buf := bytes.NewReader([]byte(sig))
+	buf := bytes.NewReader(sig)
 	if err = binary.Read(buf, binary.BigEndian, &timestamp); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if maxAge > 0 {
 		if age := getTimestamp() - timestamp; age > maxAge {
-			return "", fmt.Errorf("signature age %d > %d seconds", age, maxAge)
+			return nil, fmt.Errorf("signature age %d > %d seconds", age, maxAge)
 		}
 	}
+
 	return val, nil
 }
 
@@ -197,4 +233,12 @@ func (s *TimestampSignature) Unsign(value string, maxAge uint32) (string, error)
 func NewTimestampSignature(secret, salt, sep, derivation string, digest hash.Hash, algo SigningAlgorithm) *TimestampSignature {
 	s := NewSignature(secret, salt, sep, derivation, digest, algo)
 	return &TimestampSignature{Signature: *s}
+}
+
+func sepJoin(value, sep, sig []byte) []byte {
+	buf := bytes.Buffer{}
+	buf.Write(value)
+	buf.Write(sep)
+	buf.Write(sig)
+	return buf.Bytes()
 }
