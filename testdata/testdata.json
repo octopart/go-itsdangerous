@@ -1,0 +1,20 @@
+[
+    {
+        "After": "eyJzb21lX251bWJlciI6IDEsICJzb21lX3dvcmRzIjogIlNvbWUgc2hvcnQgcGF5bG9hZCJ9.p4dtAj2iC36yLvYmo_FP1mMJikk", 
+        "Before": "{\"some_number\": 1, \"some_words\": \"Some short payload\"}"
+    }, 
+    {
+        "After": ".eJxNjk1Ow0AMha_ylDXqAiEWvUEl2IBYI2fiNCM848h2KGnF3Zk2qsTS7-fzu3SuhT_rUnq2bo_HB2zKSW3wJnTv7YJoPWKmVZQGxESBUxYBpcjfFNwkxllyj5EpFuM9XvMPD8i1BWMCwfi4CBmcLZPkMxvynRLBZQ6EboykZTZ2v1E9LLffzSv0xdeOT2pxrY-onFqObN0BhztNXNGT8_MTuCYd-D-nebf5jZOowmlkWdEzZqG0DSZ8vL3sut8_F8xkZQ.nWwe3KZU_2y9fkfKIkW5I6jyLNY", 
+        "Before": "{\"some_number\": 2, \"some_words\": \"Some long payload that will activate the zlib feature: Mixed in with a regular serializer it will attempt to zlib compress the string to make it shorter if necessary.  It will also base64 encode the string so that it can safely be placed in a URL.\"}"
+    }, 
+    {
+        "IsTimed": true, 
+        "After": "eyJzb21lX251bWJlciI6IDMsICJzb21lX3dvcmRzIjogIlNvbWUgVElNRUQgc2hvcnQgcGF5bG9hZCJ9.CsxT0w.ErzMtlBiK4ro_UDkvLJDbT5AlNc", 
+        "Before": "{\"some_number\": 3, \"some_words\": \"Some TIMED short payload\"}"
+    }, 
+    {
+        "IsTimed": true, 
+        "After": ".eJxNjj9vwkAMxb_KU-aKCTEw0wGpLKXMyLk45FTfXWQ7paHqd-9BhNTR78_P76exkvicp9SyNlusX7Ao16KdVaE51gsf-8PrDlLyBSPNUqiDD-S4RhFQ8PhFzlVi3CS26Jl8Ut7iEL-5Q8w16AMIypdJSGGskSTeWBGfFHdOo8PLwggljcpmD6q5xvq7eok--d6xoajf6z0yh5ojnVfA_kkTK2jJeLMG51A6_s-p3mN-5QTKMOpZZrSMUSgsgwmn97dV8_sH7aVl-g.CsxT0w.NdTzckDUdFQAXiwsK-bATgBXUGQ", 
+        "Before": "{\"some_number\": 4, \"some_words\": \"Some TIMED long payload that will activate the zlib feature: Mixed in with a regular serializer it will attempt to zlib compress the string to make it shorter if necessary.  It will also base64 encode the string so that it can safely be placed in a URL.\"}"
+    }
+]
